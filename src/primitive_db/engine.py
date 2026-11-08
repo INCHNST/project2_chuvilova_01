@@ -3,8 +3,7 @@ import prompt
 
 def welcome():
     help_text = (
-        "<command> exit - выйти из программы\n"
-        "<command> help - справочная информация"
+        "<command> exit - выйти из программы\n<command> help - справочная информация"
     )
 
     print("Первая попытка запустить проект!")
