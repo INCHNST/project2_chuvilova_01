@@ -60,4 +60,3 @@ def drop_table(metadata, table_name):
 
     del metadata[table_name]
     return metadata
-
