@@ -4,6 +4,7 @@ import prompt
 from prettytable import PrettyTable
 
 from primitive_db.core import (
+    clear_select_cache,
     create_table,
     delete,
     drop_table,
@@ -14,6 +15,7 @@ from primitive_db.core import (
     validate_clause,
     validate_table_data,
 )
+from primitive_db.decorators import handle_db_errors
 from primitive_db.parser import parse_data_command
 from primitive_db.utils import (
     load_metadata,
@@ -72,13 +74,19 @@ def handle_data_command(metadata, parsed):
     table_name = parsed["table"]
     schema = get_schema(metadata, table_name)
 
+    if schema is None:
+        return
+
     table_data = load_table_data(table_name)
-    validate_table_data(schema, table_data)
+
+    if validate_table_data(schema, table_data) is None:
+        return
 
     where_clause = parsed.get("where")
 
     if where_clause is not None:
-        validate_clause(schema, where_clause)
+        if validate_clause(schema, where_clause) is None:
+            return
 
     if command == "info":
         columns_text = ", ".join(metadata[table_name])
@@ -89,41 +97,59 @@ def handle_data_command(metadata, parsed):
 
     if command == "select":
         rows = select(table_data, where_clause)
-        print_rows(schema, rows)
+
+        if rows is not None:
+            print_rows(schema, rows)
+
         return
 
     if command == "insert":
-        table_data = insert(
+        result = insert(
             metadata,
             table_name,
             parsed["values"],
         )
-        save_table_data(table_name, table_data)
 
-        new_id = table_data[-1]["ID"]
+        if result is None:
+            return
+
+        save_table_data(table_name, result)
+        clear_select_cache()
+
+        new_id = result[-1]["ID"]
         print(f'Запись с ID={new_id} успешно добавлена в таблицу "{table_name}".')
         return
 
-    matched_rows = select(table_data, where_clause)
+    matched_rows = [
+        row
+        for row in table_data
+        if all(row.get(column) == value for column, value in where_clause.items())
+    ]
     matched_ids = [row["ID"] for row in matched_rows]
 
     if command == "update":
         set_clause = parsed["set"]
-        validate_clause(schema, set_clause)
 
-        table_data = update(
+        if validate_clause(schema, set_clause) is None:
+            return
+
+        result = update(
             table_data,
             set_clause,
             where_clause,
         )
     else:
-        table_data = delete(table_data, where_clause)
+        result = delete(table_data, where_clause)
+
+    if result is None:
+        return
 
     if not matched_ids:
         print("Подходящих записей нет.")
         return
 
-    save_table_data(table_name, table_data)
+    save_table_data(table_name, result)
+    clear_select_cache()
 
     for row_id in matched_ids:
         if command == "update":
@@ -133,6 +159,9 @@ def handle_data_command(metadata, parsed):
 
 
 def handle_table_command(metadata, args):
+    if not args:
+        return
+
     command = args[0]
 
     if command == "list_tables":
@@ -147,40 +176,67 @@ def handle_table_command(metadata, args):
 
         return
 
-    previous_metadata = metadata.copy()
-
     if command == "create_table":
         if len(args) < 3:
             raise ValueError("Укажите имя таблицы и хотя бы один столбец.")
 
         table_name = args[1]
-        metadata = create_table(metadata, table_name, args[2:])
+        result = create_table(
+            metadata,
+            table_name,
+            args[2:],
+        )
 
     elif command == "drop_table":
         if len(args) != 2:
             raise ValueError("Укажите одно имя таблицы.")
 
         table_name = args[1]
-        metadata = drop_table(metadata, table_name)
+        result = drop_table(metadata, table_name)
 
     else:
         print(f"Функции {command} нет. Попробуйте снова.")
         return
 
-    if metadata == previous_metadata:
+    if result is None:
         return
 
     if command == "create_table":
         save_table_data(table_name, [])
 
-    save_metadata(METADATA_FILE, metadata)
+    save_metadata(METADATA_FILE, result)
 
     if command == "create_table":
-        columns_text = ", ".join(metadata[table_name])
+        columns_text = ", ".join(result[table_name])
         print(f'Таблица "{table_name}" успешно создана со столбцами: {columns_text}')
     else:
         remove_table_data(table_name)
         print(f'Таблица "{table_name}" успешно удалена.')
+
+    clear_select_cache()
+
+
+@handle_db_errors
+def execute_command(text):
+    command = text.split(maxsplit=1)[0]
+
+    if command in {"help", "exit"}:
+        if text != command:
+            raise ValueError(f"У команды {command} нет аргументов.")
+
+        if command == "help":
+            print_help()
+
+        return
+
+    metadata = load_metadata(METADATA_FILE)
+
+    if command in DATA_COMMANDS:
+        parsed = parse_data_command(text)
+        handle_data_command(metadata, parsed)
+    else:
+        args = shlex.split(text)
+        handle_table_command(metadata, args)
 
 
 def run():
@@ -198,29 +254,7 @@ def run():
         if not text:
             continue
 
-        try:
-            command = text.split(maxsplit=1)[0]
+        if text == "exit":
+            break
 
-            if command in {"help", "exit"}:
-                if text != command:
-                    raise ValueError(f"У команды {command} нет аргументов.")
-
-                if command == "exit":
-                    break
-
-                print_help()
-                continue
-
-            metadata = load_metadata(METADATA_FILE)
-
-            if command in DATA_COMMANDS:
-                parsed = parse_data_command(text)
-                handle_data_command(metadata, parsed)
-            else:
-                args = shlex.split(text)
-                handle_table_command(metadata, args)
-
-        except ValueError as error:
-            print(f"Некорректное значение: {error} Попробуйте снова.")
-        except OSError as error:
-            print(f"Ошибка работы с файлами: {error}")
+        execute_command(text)
