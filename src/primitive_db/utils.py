@@ -1,8 +1,11 @@
 import json
-from pathlib import Path
+import os
+
+from primitive_db.constants import DATA_DIR
 
 
 def load_metadata(filepath):
+    """Загрузить метаданные или вернуть пустой словарь."""
     try:
         with open(filepath, encoding="utf-8") as file:
             metadata = json.load(file)
@@ -23,22 +26,26 @@ def load_metadata(filepath):
 
 
 def save_metadata(filepath, data):
+    """Сохранить метаданные в JSON файл."""
     with open(filepath, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 
 def get_table_path(table_name):
+    """Сформировать путь к файлу таблицы с допустимым именем."""
     if not table_name.isidentifier():
         raise ValueError(f"Некорректное имя таблицы: {table_name}")
 
-    return Path("data") / f"{table_name}.json"
+    return os.path.join(DATA_DIR, f"{table_name}.json")
 
 
 def load_table_data(table_name):
-    filepath = get_table_path(table_name)
-
+    """Загрузить записи таблицы или вернуть пустой список."""
     try:
-        with filepath.open(encoding="utf-8") as file:
+        with open(
+            get_table_path(table_name),
+            encoding="utf-8",
+        ) as file:
             data = json.load(file)
     except FileNotFoundError:
         return []
@@ -53,13 +60,17 @@ def load_table_data(table_name):
 
 
 def save_table_data(table_name, data):
+    """Сохранить записи, при необходимости создав каталог."""
     filepath = get_table_path(table_name)
-    filepath.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
 
-    with filepath.open("w", encoding="utf-8") as file:
+    with open(filepath, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 
 def remove_table_data(table_name):
-    filepath = get_table_path(table_name)
-    filepath.unlink(missing_ok=True)
+    """Удалить файл таблицы, если он существует."""
+    try:
+        os.remove(get_table_path(table_name))
+    except FileNotFoundError:
+        pass

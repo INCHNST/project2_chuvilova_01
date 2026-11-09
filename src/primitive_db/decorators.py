@@ -1,11 +1,19 @@
 import time
-from copy import deepcopy
-from functools import wraps
+
+
+def preserve_metadata(func, wrapper):
+    """Сохранить имя и описание обёрнутой функции."""
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__wrapped__ = func
+    return wrapper
 
 
 def handle_db_errors(func):
-    @wraps(func)
+    """Обработать ошибки операции базы данных."""
+
     def wrapper(*args, **kwargs):
+        """Выполнить функцию и вывести сообщение об ошибке."""
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
@@ -21,13 +29,17 @@ def handle_db_errors(func):
 
         return None
 
-    return wrapper
+    return preserve_metadata(func, wrapper)
 
 
 def confirm_action(action_name):
+    """Создать декоратор подтверждения указанного действия."""
+
     def decorator(func):
-        @wraps(func)
+        """Обернуть функцию запросом подтверждения."""
+
         def wrapper(*args, **kwargs):
+            """Выполнить действие только после ответа y."""
             try:
                 answer = input(
                     f'Вы уверены, что хотите выполнить "{action_name}"? [y/n]: '
@@ -42,14 +54,16 @@ def confirm_action(action_name):
 
             return func(*args, **kwargs)
 
-        return wrapper
+        return preserve_metadata(func, wrapper)
 
     return decorator
 
 
 def log_time(func):
-    @wraps(func)
+    """Вывести длительность вызова обёрнутой функции."""
+
     def wrapper(*args, **kwargs):
+        """Измерить вызов функции монотонными часами."""
         start = time.monotonic()
 
         try:
@@ -58,19 +72,21 @@ def log_time(func):
             duration = time.monotonic() - start
             print(f"Функция {func.__name__} выполнилась за {duration:.3f} секунд")
 
-    return wrapper
+    return preserve_metadata(func, wrapper)
 
 
 def create_cacher():
+    """Создать функцию кэширования со словарём в замыкании."""
     cache = {}
 
     def cache_result(key, value_func):
+        """Вернуть сохранённый результат или вычислить новый."""
         if key in cache:
             print("Результат получен из кэша.")
         else:
-            cache[key] = deepcopy(value_func())
+            cache[key] = value_func()
 
-        return deepcopy(cache[key])
+        return cache[key]
 
     cache_result.clear = cache.clear
     return cache_result

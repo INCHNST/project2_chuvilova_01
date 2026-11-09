@@ -1,10 +1,10 @@
 [project]
 name = "primitive-db"
 version = "0.1.0"
-description = "Add your description here"
+description = "Учебная консольная база данных с JSON-хранилищем и CRUD-операциями"
 readme = "README.md"
 authors = [
-    { name = "INCHNST" }
+    { name = "Чувилова Юлия" }
 ]
 requires-python = ">=3.12"
 dependencies = [

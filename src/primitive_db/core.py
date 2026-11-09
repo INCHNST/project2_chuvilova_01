@@ -1,5 +1,6 @@
 import json
 
+from primitive_db.constants import PYTHON_TYPES, VALID_TYPES
 from primitive_db.decorators import (
     confirm_action,
     create_cacher,
@@ -8,17 +9,17 @@ from primitive_db.decorators import (
 )
 from primitive_db.utils import load_table_data
 
-VALID_TYPES = {"int", "str", "bool"}
-PYTHON_TYPES = {"int": int, "str": str, "bool": bool}
 SELECT_CACHE = create_cacher()
 
 
 def clear_select_cache():
+    """Очистить кэш результатов выборки."""
     SELECT_CACHE.clear()
 
 
 @handle_db_errors
 def create_table(metadata, table_name, columns):
+    """Проверить схему и добавить таблицу в метаданные"""
     if table_name in metadata:
         raise ValueError(f'Таблица "{table_name}" уже существует.')
 
@@ -61,6 +62,7 @@ def create_table(metadata, table_name, columns):
 @handle_db_errors
 @confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
+    """Удалить таблицу из метаданных после подтверждения"""
     if table_name not in metadata:
         raise KeyError(table_name)
 
@@ -70,6 +72,7 @@ def drop_table(metadata, table_name):
 
 @handle_db_errors
 def get_schema(metadata, table_name):
+    """Получить схему существующей таблицы"""
     if table_name not in metadata:
         raise KeyError(table_name)
 
@@ -91,6 +94,7 @@ def get_schema(metadata, table_name):
 
 @handle_db_errors
 def validate_clause(schema, clause):
+    """Проверить столбцы и типы значений"""
     for column_name, value in clause.items():
         if column_name not in schema:
             raise KeyError(column_name)
@@ -107,6 +111,7 @@ def validate_clause(schema, clause):
 
 @handle_db_errors
 def validate_table_data(schema, table_data):
+    """Проверить структуру записей и уникальность ID"""
     ids = set()
 
     for row in table_data:
@@ -127,6 +132,7 @@ def validate_table_data(schema, table_data):
 @handle_db_errors
 @log_time
 def insert(metadata, table_name, values):
+    """Добавить запись с автоматически рассчитанным ID"""
     schema = get_schema(metadata, table_name)
 
     if schema is None:
@@ -164,6 +170,7 @@ def insert(metadata, table_name, values):
 @handle_db_errors
 @log_time
 def select(table_data, where_clause=None):
+    """Получить все или отфильтрованные записи с кэшированием."""
     key = json.dumps(
         {
             "data": table_data,
@@ -174,6 +181,7 @@ def select(table_data, where_clause=None):
     )
 
     def calculate_result():
+        """Вычислить результат выборки."""
         if where_clause is None:
             return list(table_data)
 
@@ -183,11 +191,23 @@ def select(table_data, where_clause=None):
             if all(row.get(column) == value for column, value in where_clause.items())
         ]
 
-    return SELECT_CACHE(key, calculate_result)
+    def detached_result():
+        """Отделить кэшируемые записи от исходных данных."""
+        return json.loads(
+            json.dumps(
+                calculate_result(),
+                ensure_ascii=False,
+            )
+        )
+
+    cached = SELECT_CACHE(key, detached_result)
+
+    return json.loads(json.dumps(cached, ensure_ascii=False))
 
 
 @handle_db_errors
 def update(table_data, set_clause, where_clause):
+    """Изменить поля записей, соответствующих условию"""
     if "ID" in set_clause:
         raise ValueError("Изменять ID нельзя.")
 
@@ -201,6 +221,7 @@ def update(table_data, set_clause, where_clause):
 @handle_db_errors
 @confirm_action("удаление записей")
 def delete(table_data, where_clause):
+    """Удалить подходящие записи после подтверждения"""
     return [
         row
         for row in table_data

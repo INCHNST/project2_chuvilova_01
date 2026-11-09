@@ -1,36 +1,44 @@
 # project2_chuvilova_01
 
 primitive_db — учебное консольное приложение.
-На подготовительном этапе доступны команды help и exit.
+
+Приложение поддерживает создание и удаление таблиц,
+CRUD-операции, хранение данных в JSON,
+подтверждение удаления и кэширование выборок.
 
 ## Требования
 
-Python 3.12 или новее и установленный uv.
+Python 3.12 или новее, uv и make.
 
 ## Установка
 
-Из корня клонированного репозитория выполните:
+Из корня клонированного репозитория:
+
+    make install
+
+Эквивалентная команда:
 
     uv sync
 
 ## Запуск
 
+    make run
+
+Эквивалентная команда:
+
     uv run database
 
-## Команды приложения
+## Проверка качества кода
 
-help — показать справку.
-exit — завершить программу.
+    make lint
 
-## Качество кода
+## Форматирование
 
-    uv run ruff check .
-    uv run ruff format --check .
+    make format
 
-## Сборка и проверка метаданных
+## Сборка
 
-    uv build
-    uvx twine check dist/*
+    make build
 
 ## Установка собранного пакета
 
@@ -179,3 +187,6 @@ create_cacher() создаёт замыкание со словарём кэша
 
 [![asciicast](https://asciinema.org/a/PuC9LmQxOdjAbJIq.svg)](https://asciinema.org/a/PuC9LmQxOdjAbJIq)
 
+## Полная финальная демонстрация финальной проверки и тестирования
+
+[![asciicast](https://asciinema.org/a/ceEWMBjfwHav4eBo.svg)](https://asciinema.org/a/ceEWMBjfwHav4eBo)П

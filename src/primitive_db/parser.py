@@ -1,35 +1,29 @@
 import json
-import re
 
 
 def read_assignment(text):
-    match = re.match(r"\s*(\w+)\s*=\s*", text)
+    """Разобрать присваивание и вернуть словарь и остаток текста."""
+    column_name, separator, value_text = text.strip().partition("=")
+    column_name = column_name.strip()
 
-    if match is None:
+    if not separator or not column_name.isidentifier():
         raise ValueError("Ожидается условие вида: столбец = значение.")
 
-    column_name = match.group(1)
-
-    if not column_name.isidentifier():
-        raise ValueError("Некорректное имя столбца.")
-
-    value_text = text[match.end() :]
+    value_text = value_text.lstrip()
 
     try:
         value, position = json.JSONDecoder().raw_decode(value_text)
     except json.JSONDecodeError as error:
-        raise ValueError(
-            "Некорректное значение. Строки заключайте в двойные кавычки."
-        ) from error
+        raise ValueError("Строки заключайте в двойные кавычки.") from error
 
     if type(value) not in (int, str, bool):
         raise ValueError("Поддерживаются только int, str и bool.")
 
-    remainder = value_text[position:].strip()
-    return {column_name: value}, remainder
+    return {column_name: value}, value_text[position:].strip()
 
 
 def parse_where(text):
+    """Преобразовать одно условие равенства в словарь."""
     clause, remainder = read_assignment(text)
 
     if remainder:
@@ -39,16 +33,16 @@ def parse_where(text):
 
 
 def parse_set(text):
+    """Преобразовать присваивание одного поля в словарь."""
     return parse_where(text)
 
 
 def parse_insert_values(text):
+    """Преобразовать список JSON значений в список Python."""
     try:
         values = json.loads(f"[{text}]")
     except json.JSONDecodeError as error:
-        raise ValueError(
-            'Некорректные значения. Пример: ("Sergei", 28, true).'
-        ) from error
+        raise ValueError('Пример значений: ("Sergei", 28, true).') from error
 
     if not all(type(value) in (int, str, bool) for value in values):
         raise ValueError("Поддерживаются только int, str и bool.")
@@ -57,70 +51,84 @@ def parse_insert_values(text):
 
 
 def parse_data_command(text):
+    """Разобрать CRUD команду, сохранив кавычки в значениях."""
     text = text.strip()
 
-    match = re.fullmatch(
-        r"insert\s+into\s+(\w+)\s+values\s*\((.*)\)",
-        text,
-    )
-    if match:
-        return {
-            "command": "insert",
-            "table": match.group(1),
-            "values": parse_insert_values(match.group(2)),
-        }
+    if not text:
+        raise ValueError("Введите команду.")
 
-    match = re.fullmatch(
-        r"select\s+from\s+(\w+)(?:\s+where\s+(.+))?",
-        text,
-    )
-    if match:
-        condition = match.group(2)
+    command = text.split(maxsplit=1)[0]
 
-        return {
-            "command": "select",
-            "table": match.group(1),
-            "where": parse_where(condition) if condition else None,
-        }
+    if command == "insert":
+        parts = text.split(maxsplit=4)
 
-    match = re.fullmatch(
-        r"update\s+(\w+)\s+set\s+(.+)",
-        text,
-    )
-    if match:
-        assignment_text = match.group(2)
-        _, remainder = read_assignment(assignment_text)
+        if len(parts) == 5 and parts[1] == "into" and parts[3] == "values":
+            values_text = parts[4].strip()
 
-        where_match = re.fullmatch(r"where\s+(.+)", remainder)
+            if values_text.startswith("(") and values_text.endswith(")"):
+                return {
+                    "command": "insert",
+                    "table": parts[2],
+                    "values": parse_insert_values(values_text[1:-1]),
+                }
 
-        if where_match is None:
-            raise ValueError("Для update требуется условие where.")
+    elif command == "select":
+        parts = text.split(maxsplit=3)
 
-        set_text = assignment_text[: len(assignment_text) - len(remainder)].strip()
+        if len(parts) >= 3 and parts[1] == "from":
+            condition = None
 
-        return {
-            "command": "update",
-            "table": match.group(1),
-            "set": parse_set(set_text),
-            "where": parse_where(where_match.group(1)),
-        }
+            if len(parts) == 4:
+                tail = parts[3].split(maxsplit=1)
 
-    match = re.fullmatch(
-        r"delete\s+from\s+(\w+)\s+where\s+(.+)",
-        text,
-    )
-    if match:
-        return {
-            "command": "delete",
-            "table": match.group(1),
-            "where": parse_where(match.group(2)),
-        }
+                if len(tail) != 2 or tail[0] != "where":
+                    raise ValueError("Ожидается where и условие.")
 
-    match = re.fullmatch(r"info\s+(\w+)", text)
-    if match:
-        return {
-            "command": "info",
-            "table": match.group(1),
-        }
+                condition = parse_where(tail[1])
+
+            return {
+                "command": "select",
+                "table": parts[2],
+                "where": condition,
+            }
+
+    elif command == "update":
+        parts = text.split(maxsplit=3)
+
+        if len(parts) == 4 and parts[2] == "set":
+            assignment_text = parts[3]
+            _, remainder = read_assignment(assignment_text)
+            tail = remainder.split(maxsplit=1)
+
+            if len(tail) != 2 or tail[0] != "where":
+                raise ValueError("Для update требуется условие where.")
+
+            set_text = assignment_text[: len(assignment_text) - len(remainder)]
+
+            return {
+                "command": "update",
+                "table": parts[1],
+                "set": parse_set(set_text),
+                "where": parse_where(tail[1]),
+            }
+
+    elif command == "delete":
+        parts = text.split(maxsplit=4)
+
+        if len(parts) == 5 and parts[1] == "from" and parts[3] == "where":
+            return {
+                "command": "delete",
+                "table": parts[2],
+                "where": parse_where(parts[4]),
+            }
+
+    elif command == "info":
+        parts = text.split()
+
+        if len(parts) == 2:
+            return {
+                "command": "info",
+                "table": parts[1],
+            }
 
     raise ValueError("Некорректный синтаксис команды.")

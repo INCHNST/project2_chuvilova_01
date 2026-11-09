@@ -3,6 +3,7 @@ import shlex
 import prompt
 from prettytable import PrettyTable
 
+from primitive_db.constants import DATA_COMMANDS, META_FILE
 from primitive_db.core import (
     clear_select_cache,
     create_table,
@@ -25,11 +26,9 @@ from primitive_db.utils import (
     save_table_data,
 )
 
-METADATA_FILE = "db_meta.json"
-DATA_COMMANDS = {"insert", "select", "update", "delete", "info"}
-
 
 def print_help():
+    """Вывести справку по командам приложения"""
     print("\n***Операции с данными***")
     print("Функции:")
     print("insert into <таблица> values (<значение1>, ...) - добавить запись")
@@ -57,6 +56,7 @@ def print_help():
 
 
 def print_rows(schema, rows):
+    """Вывести записи в формате PrettyTable"""
     table = PrettyTable()
     table.field_names = list(schema)
 
@@ -70,6 +70,7 @@ def print_rows(schema, rows):
 
 
 def handle_data_command(metadata, parsed):
+    """Выполнить CRUD команду и сохранить изменения"""
     command = parsed["command"]
     table_name = parsed["table"]
     schema = get_schema(metadata, table_name)
@@ -159,6 +160,7 @@ def handle_data_command(metadata, parsed):
 
 
 def handle_table_command(metadata, args):
+    """Выполнить команду управления таблицами"""
     if not args:
         return
 
@@ -204,7 +206,7 @@ def handle_table_command(metadata, args):
     if command == "create_table":
         save_table_data(table_name, [])
 
-    save_metadata(METADATA_FILE, result)
+    save_metadata(META_FILE, result)
 
     if command == "create_table":
         columns_text = ", ".join(result[table_name])
@@ -218,6 +220,7 @@ def handle_table_command(metadata, args):
 
 @handle_db_errors
 def execute_command(text):
+    """Разобрать и выполнить пользовательскую команду"""
     command = text.split(maxsplit=1)[0]
 
     if command in {"help", "exit"}:
@@ -229,7 +232,7 @@ def execute_command(text):
 
         return
 
-    metadata = load_metadata(METADATA_FILE)
+    metadata = load_metadata(META_FILE)
 
     if command in DATA_COMMANDS:
         parsed = parse_data_command(text)
@@ -240,6 +243,7 @@ def execute_command(text):
 
 
 def run():
+    """Запустить цикл ввода команд базы данных"""
     print_help()
 
     while True:
